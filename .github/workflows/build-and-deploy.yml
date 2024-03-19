@@ -135,8 +135,8 @@ jobs:
           )
           }}
         run: |
-          mkdir -p build/version/index_${{ env.__PKG_VERSION_STR__ }}
-          cp src/index.html "build/index_${{ env.__PKG_VERSION_STR__ }}/index.html"
+          mkdir -p build/version/v${{ env.__PKG_VERSION_STR__ }}
+          cp src/index.html "build/version/v${{ env.__PKG_VERSION_STR__ }}/index.html"
           cp src/index.html "build/index.html"
 
       #      - name: 'Compress Zip'
