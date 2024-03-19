@@ -127,17 +127,18 @@ jobs:
       #
       # BUILD & RELEASE
       # ---------------------------------------------------------
-      #      - name: 'Build'
-      #        if: ${{
-      #          (
-      #          contains(github.event.head_commit.message, 'run-ci') ||
-      #          startsWith(github.ref, 'refs/tags/v')
-      #          )
-      #          }}
-      #        run: |
-      #          yarn install && yarn build
-      #          cp build/index.html "build/index_${{ env.__PKG_VERSION_STR__ }}.html"
-      #
+      - name: 'Build'
+        if: ${{
+          (
+          contains(github.event.head_commit.message, 'run-ci') ||
+          startsWith(github.ref, 'refs/tags/v')
+          )
+          }}
+        run: |
+          mkdir build
+          cp src/index.html "build/history/index_${{ env.__PKG_VERSION_STR__ }}.html"
+          cp src/index.html "build/index.html"
+
       #      - name: 'Compress Zip'
       #        if: ${{
       #          (
@@ -162,6 +163,12 @@ jobs:
           ls -lah node_modules | head -10
           ls -la
 
+
+      - name: 'Deploy'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
       #
       # CDN，先发布 CDN 再发版，避免发版失败或冲突，导致 CDN 不执行
       # ---------------------------------------------------------
