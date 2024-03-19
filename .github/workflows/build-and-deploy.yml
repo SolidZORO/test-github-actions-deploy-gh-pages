@@ -135,7 +135,7 @@ jobs:
           )
           }}
         run: |
-          mkdir build
+          mkdir -p build/history
           cp src/index.html "build/history/index_${{ env.__PKG_VERSION_STR__ }}.html"
           cp src/index.html "build/index.html"
 
