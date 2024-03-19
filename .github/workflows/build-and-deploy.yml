@@ -1,0 +1,187 @@
+name: Github Actions Deploy
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - 'deploy'
+      - 'master'
+      - 'main'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+jobs:
+  build-and-deploy:
+    # 除了 tags 发版会执行 ci 外，在 commit message 中包含 run-ci，也会执行 ci
+    # 主要是为了在 tags 外执行一次 ci，缓存 node_modules 给 tags 共享
+    # 因为各 tags 是无法共享 node_modules 的
+    if: ${{
+      github.event_name == 'push' &&
+      (
+      contains(github.event.head_commit.message, 'run-ci') ||
+      startsWith(github.ref, 'refs/tags/v')
+      )
+      }}
+    runs-on: ubuntu-latest
+    env:
+      __PKG_NAME__: 'NA'
+      __PKG_VERSION_NUM__: '0.0.0'
+      __PKG_VERSION_STR__: 'v0.0.0'
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: 'Step Node Env'
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: 'Commit Message (Output)'
+        run: |
+          echo '${{ toJSON(github.event.head_commit.message) }}'
+
+      #
+      # GEN .env
+      # ---------------------------------------------------------
+      - name: 'Gen All Github Secrets to `.env`'
+        run: |
+          echo "" > .env
+          echo "---- DOTENV-PLACEHOLDER-S ----"
+          echo SKIP_PREFLIGHT_CHECK=${{ secrets.SKIP_PREFLIGHT_CHECK }} >> .env
+          echo GENERATE_SOURCEMAP=${{ secrets.GENERATE_SOURCEMAP }} >> .env
+          echo REACT_APP_NAME=${{ secrets.REACT_APP_NAME }} >> .env
+          echo REACT_APP_OFFICIAL_WEBSITE_URL=${{ secrets.REACT_APP_OFFICIAL_WEBSITE_URL }} >> .env
+          echo REACT_APP_API_BASE_URL=${{ secrets.REACT_APP_API_BASE_URL }} >> .env
+          echo REACT_APP_CDN_URL=${{ secrets.REACT_APP_CDN_URL }} >> .env
+          echo REACT_APP_UPLOAD_URL=${{ secrets.REACT_APP_UPLOAD_URL }} >> .env
+          echo REACT_APP_GOOGLE_ANALYTICS_ID=${{ secrets.REACT_APP_GOOGLE_ANALYTICS_ID }} >> .env
+          echo REACT_APP_GOOGLE_ANALYTICS_ID_FOR_ANDROID=${{ secrets.REACT_APP_GOOGLE_ANALYTICS_ID_FOR_ANDROID }} >> .env
+          echo REACT_APP_UMENG_ANALYTICS_APPKEY=${{ secrets.REACT_APP_UMENG_ANALYTICS_APPKEY }} >> .env
+          echo REACT_APP_UMENG_ANALYTICS_APPKEY_FOR_ANDROID=${{ secrets.REACT_APP_UMENG_ANALYTICS_APPKEY_FOR_ANDROID }} >> .env
+          echo REACT_APP_DEMO_MODE=${{ secrets.REACT_APP_DEMO_MODE }} >> .env
+          echo REACT_APP_DEBUG_MODE=${{ secrets.REACT_APP_DEBUG_MODE }} >> .env
+          echo REACT_APP_ALI_NOCAPTCHA_APPKEY=${{ secrets.REACT_APP_ALI_NOCAPTCHA_APPKEY }} >> .env
+          echo REACT_APP_ALI_NOCAPTCHA_SCENE=${{ secrets.REACT_APP_ALI_NOCAPTCHA_SCENE }} >> .env
+          echo REACT_APP_SENTRY_DSN=${{ secrets.REACT_APP_SENTRY_DSN }} >> .env
+          echo REACT_APP_SENTRY_WHITELIST_URLS=${{ secrets.REACT_APP_SENTRY_WHITELIST_URLS }} >> .env
+          echo REACT_APP_OAUTH_WEIBO_CLIENT_ID=${{ secrets.REACT_APP_OAUTH_WEIBO_CLIENT_ID }} >> .env
+          echo REACT_APP_OAUTH_WEIBO_CALLBACK_URL=${{ secrets.REACT_APP_OAUTH_WEIBO_CALLBACK_URL }} >> .env
+          echo REACT_APP_OAUTH_WEIBO_PROXY_REDIRECT_URI=${{ secrets.REACT_APP_OAUTH_WEIBO_PROXY_REDIRECT_URI }} >> .env
+          echo CI_GITHUB_TOKEN=${{ secrets.CI_GITHUB_TOKEN }} >> .env
+          echo "---- DOTENV-PLACEHOLDER-E ----"
+          cat .env
+
+      #
+      # GET INFO
+      # ---------------------------------------------------------
+      - name: 'Get Package Name'
+        run: |
+          PKG_NAME=$(echo $(node ./.github/workflows/ci-get-pkg-name.js))
+          echo $PKG_NAME
+          echo __PKG_NAME__=$PKG_NAME >> $GITHUB_ENV
+
+      - name: 'Get Package Version'
+        run: |
+          PKG_VERSION=$(echo $(node ./.github/workflows/ci-get-pkg-version.js))
+          echo $PKG_VERSION
+          echo __PKG_VERSION_NUM__=$PKG_VERSION >> $GITHUB_ENV
+          echo __PKG_VERSION_STR__=v$PKG_VERSION >> $GITHUB_ENV
+
+      - name: 'Get Changelog'
+        id: STEP_CHANGELOG
+        run: |
+          log=$(node ./.github/workflows/ci-get-changelog.js --tag=${{ env.__PKG_VERSION_NUM__ }})
+          echo $log >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "--------" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "Demo: ${{ secrets.PUBLIC_URL }}/index.html?v=latest" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "Demo: ${{ secrets.PUBLIC_URL }}/index_${{ env.__PKG_VERSION_STR__ }}.html" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          echo "" >> CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+          cat CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+
+      #
+      # CACHE && INSTALL
+      # ---------------------------------------------------------
+      - name: 'Cache'
+        uses: actions/cache@v3
+        id: STEP_CACHE
+        with:
+          path: '**/node_modules'
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-yarn-
+
+      - name: 'Cache (Output)'
+        run: |
+          echo '${{ toJSON(steps.STEP_CACHE.outputs) }}'
+          echo "--------"
+          ls -lah node_modules | head -10
+
+      - name: 'Install'
+        if: ${{ steps.STEP_CACHE.outputs.cache-hit != 'true' }}
+        run: yarn install --frozen-lockfile
+
+      #
+      # BUILD & RELEASE
+      # ---------------------------------------------------------
+      #      - name: 'Build'
+      #        if: ${{
+      #          (
+      #          contains(github.event.head_commit.message, 'run-ci') ||
+      #          startsWith(github.ref, 'refs/tags/v')
+      #          )
+      #          }}
+      #        run: |
+      #          yarn install && yarn build
+      #          cp build/index.html "build/index_${{ env.__PKG_VERSION_STR__ }}.html"
+      #
+      #      - name: 'Compress Zip'
+      #        if: ${{
+      #          (
+      #          contains(github.event.head_commit.message, 'run-ci') ||
+      #          startsWith(github.ref, 'refs/tags/v')
+      #          )
+      #          }}
+      #        run: |
+      #          touch ${{ env.__PKG_VERSION_STR__ }}
+      #          zip -r "${{ env.__PKG_NAME__ }}_release_${{ env.__PKG_VERSION_STR__ }}.zip" \
+      #          build/ \
+      #          README.md \
+      #          LICENSE \
+      #          CHANGELOG.md \
+      #          CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md \
+      #          package.json \
+      #          ${{ env.__PKG_VERSION_STR__ }}
+
+      - name: 'Status (DEBUG)'
+        run: |
+          pwd
+          ls -lah node_modules | head -10
+          ls -la
+
+      #
+      # CDN，先发布 CDN 再发版，避免发版失败或冲突，导致 CDN 不执行
+      # ---------------------------------------------------------
+      #      - name: 'Sync To CDN'
+      #        run: yarn sync-to-cdn
+
+      #
+      # 发版
+#      - name: 'Upload Release'
+#        if: ${{
+#          (
+#          contains(github.event.head_commit.message, 'run-release') ||
+#          startsWith(github.ref, 'refs/tags/v')
+#          )
+#          }}
+#        uses: softprops/action-gh-release@v1
+#        with:
+#          token: ${{ secrets.CI_GITHUB_TOKEN }}
+#          body_path: CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
+#          files: |
+#            ${{ env.__PKG_NAME__ }}_release_${{ env.__PKG_VERSION_STR__ }}.zip
+#            build/index_${{ env.__PKG_VERSION_STR__ }}.html
+#            CHANGELOG-${{ env.__PKG_VERSION_STR__ }}.md
