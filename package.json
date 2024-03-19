@@ -1,6 +1,6 @@
 {
   "name": "test-github-actions-deploy-gh-pages",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": "Jason Feng <solidzoro@live.com>",
   "license": "UNLICENSED",
   "private": true,
