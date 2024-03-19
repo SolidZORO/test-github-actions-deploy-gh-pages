@@ -169,6 +169,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build
+          keep_files: true
       #
       # CDN，先发布 CDN 再发版，避免发版失败或冲突，导致 CDN 不执行
       # ---------------------------------------------------------
